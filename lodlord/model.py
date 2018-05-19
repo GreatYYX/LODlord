@@ -43,7 +43,6 @@ class Model(object):
     def _reset(self):
         self.all_terms = {} # all s, p and o terms
         self.all_relations = {} # node -> p_ref -> [node]
-        self.template = []
 
     def _pre_process(self, raw_model):
         def process_literal(m):
@@ -113,7 +112,7 @@ class Model(object):
             # not ll node
             uri = str(obj)
             if not uri.startswith(LL_URI):
-                return TripleURI(self.get_short_uri(uri))
+                return TripleURI(uri, short_uri=self.get_short_uri(uri))
 
             # ll node
             parsed_uri = urlparse(uri)
@@ -210,29 +209,54 @@ class Model(object):
             self.error_stack.append({'line': e.lines + 1, 'message': e.message})
             print(self.error_stack)
 
+    def _create_concrete_terms(self, record, obj):
+        if isinstance(obj, TripleURI):
+            if obj.slot:
+                v = getattr(record, obj.slot)
+                if not isinstance(v, list):
+                    v = [v]
+                return [obj.generate(vv) for vv in v]
+            else:
+                return [obj.generate()]
+        elif isinstance(obj, TripleBlank):
+            return [obj.generate(record.id)]
+        else:
+            if obj.slot:
+                v = getattr(record, obj.slot)
+                if not isinstance(v, list):
+                    v = [v]
+                return [obj.generate(vv) for vv in v]
+            else:
+                return [obj.generate()]
+
     def render(self, record: Record):
-        self.template = []
-        self.slots = []
+        data_graph = Graph(identifier='data')
 
         # for prop_name, prop_type in record.__class__.__dict__.items():
         #     if isinstance(prop_type, slot):
         #         print('slot detected:', prop_name)
-        print(self.model_graph.serialize(format='nt').decode('utf-8'))
-        exit()
+        # print(getattr(record, 'v1'))
+        # print(self.model_graph.serialize(format='nt').decode('utf-8') + '\n\n')
 
-        # bnode_mapping = {} # TripleBlank: BNode
-        # for s_ref, s in self.all_nodes.items():
-        #     for p_ref, objs in s.props.items():
-        #         p = self.all_predicates[p_ref]
-        #         for o in objs:
-        #             # TODO: Literal
-        #             # print(s_str, p_str, o_str)
-        #             print(s, p, o)
-        #             if isinstance(s, TripleBlank):
-        #                 print(s.ref_count)
-        #             if isinstance(p, TripleBlank):
-        #                 print(p.ref_count)
-        #             if isinstance(o, TripleBlank):
-        #                 print(o.ref_count)
-        #         # template = [s_str, p_str, o_str]
+        for s_ref, p_dict in self.all_relations.items():
+            s_obj_tpl = self.all_terms[s_ref]
+            for p_ref, o_refs in p_dict.items():
+                p_obj_tpl = self.all_terms[p_ref]
+                for o_ref in o_refs:
+                    o_obj_tpl = self.all_terms[o_ref]
+
+                    # each triple
+                    s_objs = self._create_concrete_terms(record, s_obj_tpl)
+                    p_objs = self._create_concrete_terms(record, p_obj_tpl)
+                    o_objs = self._create_concrete_terms(record, o_obj_tpl)
+
+                    # cross product
+                    for ss in s_objs:
+                        for pp in p_objs:
+                            for oo in o_objs:
+                                data_graph.add((ss, pp, oo))
+
+        print(data_graph.serialize(format='nt').decode('utf-8'))
+
+
 

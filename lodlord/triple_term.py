@@ -1,3 +1,5 @@
+import hashlib
+
 from rdflib import URIRef, BNode, Literal
 
 """
@@ -26,6 +28,12 @@ class TripleURI(TripleTerm):
     def __str__(self):
         return '{}'.format(self.short_uri)
 
+    def generate(self, v=None):
+        if self.slot:
+            return URIRef(v)
+        else:
+            return URIRef(self.uri)
+
 
 class TripleBlank(TripleTerm):
     def __init__(self, uri, slot=None, short_uri=None):
@@ -40,6 +48,9 @@ class TripleBlank(TripleTerm):
             return '{}'.format(self.short_uri)
         else:
             return '_:{}'.format(self.short_uri)
+
+    def generate(self, salt):
+        return BNode(hashlib.md5((self.uri + salt).encode('utf-8')).hexdigit())
 
 
 class TripleLiteral(TripleTerm):
@@ -62,3 +73,9 @@ class TripleLiteral(TripleTerm):
             return '{}@{}'.format(value, self.lang)
         else:
             return '{}'.format(value)
+
+    def generate(self, v=None):
+        if self.slot:
+            return Literal(v, datatype=self.data_type, lang=self.lang)
+        else:
+            return Literal(self.value, datatype=self.data_type, lang=self.lang)
