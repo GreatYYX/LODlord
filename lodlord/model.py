@@ -16,7 +16,7 @@ re_uri = re.compile(LL_PREFIX + ':uri\((\w{1,255})\)')
 re_blank = re.compile(LL_PREFIX + ':blank\((\w{1,255})\)')
 # ll:literal(b3, type, lang), type and lang is optional
 re_literal = re.compile(LL_PREFIX +
-            ':literal\((\w{1,255})(,\s*type\s*=\s*([\w:]{1,255})){0,1}(,\s*lang\s*=\s*(\w{1,255})){0,1}\)')
+            ':literal\((\w{1,255})(,\s*(type|lang)\s*=\s*([\w:]{1,255})){0,1}\)')
 
 
 class Model(object):
@@ -47,10 +47,10 @@ class Model(object):
     def _pre_process(self, raw_model):
         def process_literal(m):
             ret = r'{}:literal\?v\={}'.format(LL_PREFIX, m.group(1))
-            if m.group(3): # type
-                ret += '\&type\={}'.format(m.group(3))
-            if m.group(5): # lang
-                ret += '\&lang\={}'.format(m.group(5))
+            if m.group(3) == 'type':
+                ret += '\&type\={}'.format(m.group(4))
+            if m.group(3) == 'lang':
+                ret += '\&lang\={}'.format(m.group(4))
             return ret
 
         # print(raw_model)
