@@ -50,7 +50,7 @@ class TripleBlank(TripleTerm):
             return '_:{}'.format(self.short_uri)
 
     def generate(self, salt):
-        return BNode(hashlib.md5((self.uri + salt).encode('utf-8')).hexdigit())
+        return BNode(hashlib.md5((self.uri + salt).encode('utf-8')).hexdigest())
 
 
 class TripleLiteral(TripleTerm):
