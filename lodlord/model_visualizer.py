@@ -4,8 +4,8 @@ from lodlord.triple_term import TripleURI, TripleBlank, TripleLiteral
 
 
 class ModelVisualizer(object):
-    def __init__(self, model):
-        self._g = Digraph(comment='Graph')
+    def __init__(self, model, format='svg'):
+        self._g = Digraph(comment='Graph', format=format)
         self.model = model
 
     def render(self, *args, **kwargs):
