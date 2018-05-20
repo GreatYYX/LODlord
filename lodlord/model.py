@@ -7,6 +7,7 @@ from rdflib.plugins.parsers.notation3 import BadSyntax
 
 from lodlord.triple_term import TripleURI, TripleLiteral, TripleBlank
 from .record import Record, slot
+from .exception import ParseException
 
 LL_PREFIX = 'll'
 LL_URI = 'http://lodlord/'
@@ -21,15 +22,16 @@ class Model(object):
 
         self.model_graph = Graph(identifier='model')
 
-        # generate default namespaces
+        # generate predefined namespaces
         ns_manager = NamespaceManager(self.model_graph)
         ns_manager.bind(LL_PREFIX, Namespace(LL_URI))
         for prefix, uri in ontology.graph.namespaces():
             ns_manager.bind(prefix, uri, override=True, replace=True)
         ns_manager.bind('', Namespace(''), override=True, replace=True)
-        # self.all_namespaces = list(ns_manager.namespaces())
-        self.all_namespaces = {ns[0]: ns[1] for ns in list(ns_manager.namespaces())}
-        # print(self.all_namespaces)
+        self.predefined_namespaces = {ns[0]: ns[1] for ns in list(ns_manager.namespaces())}
+        self.predefined_ns_len = len(self.predefined_namespaces)
+        # all namespaces includes user defined namespaces
+        self._refresh_all_namespaces()
 
         self.name = name
         self._reset()
@@ -38,7 +40,10 @@ class Model(object):
         self.all_terms = {} # all s, p and o terms
         self.all_relations = {} # node -> p_ref -> [node]
 
-    def _parse_ll_function(self, raw_data, line_number):
+    def _refresh_all_namespaces(self):
+        self.all_namespaces = {ns[0]: ns[1] for ns in list(self.model_graph.namespace_manager.namespaces())}
+
+    def _parse_ll_function(self, raw_data):
         '''
         func_name(v0,k1=v1,k2,v2...)
         '''
@@ -51,7 +56,7 @@ class Model(object):
             if len(arg) == 1:
                 arg.insert(0, 'v')
             elif len(arg) > 2:
-                raise ValueError('Wrong parameters in function {}, line #{}'.format(func_name, line_number))
+                raise ValueError('Wrong parameter in function {}'.format(func_name))
             parsed_args[arg[0]] = arg[1]
 
         if func_name == 'uri':
@@ -66,7 +71,7 @@ class Model(object):
                 ret += '\&lang\={}'.format(parsed_args['lang'])
             return ret
         else:
-            raise ValueError('Wrong function {}, line #{}'.format(func_name, line_number))
+            raise ValueError('Wrong function {}'.format(func_name))
 
     def _pre_process(self, raw_model):
         parse_model = []
@@ -76,7 +81,10 @@ class Model(object):
         for line in raw_model.split('\n'):
             line_number += 1
             line = line.strip()
-            line = re_ll_function.sub(lambda m: self._parse_ll_function(m, line_number), line)
+            try:
+                line = re_ll_function.sub(lambda m: self._parse_ll_function(m), line)
+            except Exception as e:
+                raise ParseException(message=str(e), line=line_number - self.predefined_ns_len)
             parse_model.append(line)
 
         return '\n'.join(parse_model)
@@ -196,22 +204,12 @@ class Model(object):
 
 
     def parse(self, data):
-        '''
-        
-        :param data: 
-        :return: 
-        '''
-
-        # TODO:
-        # 1. remove bnode (only if all its referencer are bnode)?
-        # 2. detect cycle
-        # 3.
 
         # reset
         self._reset()
 
-        # add prefixes
-        data = '\n'.join(['@prefix {}:<{}> .'.format(k, v) for k, v in self.all_namespaces.items()]) + data
+        # add predefined prefixes
+        data = '\n'.join(['@prefix {}:<{}> .'.format(k, v) for k, v in self.predefined_namespaces.items()]) + data
         # print(data)
 
         try:
@@ -220,6 +218,7 @@ class Model(object):
 
             # parse graph
             self.model_graph.parse(data=data, format='ttl')
+            self._refresh_all_namespaces()
 
             # post process
             self._post_process()
@@ -227,8 +226,7 @@ class Model(object):
             return self.model_graph
 
         except BadSyntax as e:
-            self.error_stack.append({'line': e.lines + 1, 'message': e.message})
-            print(self.error_stack)
+            raise ParseException(message=e.message, line=e.lines + 1 - self.predefined_ns_len)
 
     def _create_concrete_terms(self, record, obj):
         if isinstance(obj, TripleURI):
