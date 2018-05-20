@@ -10,13 +10,7 @@ from .record import Record, slot
 
 LL_PREFIX = 'll'
 LL_URI = 'http://lodlord/'
-# ll:uri(v1)
-re_uri = re.compile(LL_PREFIX + ':uri\((\w{1,255})\)')
-# ll:bnode(b1)
-re_blank = re.compile(LL_PREFIX + ':blank\((\w{1,255})\)')
-# ll:literal(b3, type, lang), type and lang is optional
-re_literal = re.compile(LL_PREFIX +
-            ':literal\((\w{1,255})(,\s*(type|lang)\s*=\s*([\w:]{1,255})){0,1}\)')
+re_ll_function = re.compile(LL_PREFIX + ':(\w{1,255})\(\s*([\w,=:\s]*)\s*\)')
 
 
 class Model(object):
@@ -44,21 +38,48 @@ class Model(object):
         self.all_terms = {} # all s, p and o terms
         self.all_relations = {} # node -> p_ref -> [node]
 
-    def _pre_process(self, raw_model):
-        def process_literal(m):
-            ret = r'{}:literal\?v\={}'.format(LL_PREFIX, m.group(1))
-            if m.group(3) == 'type':
-                ret += '\&type\={}'.format(m.group(4))
-            if m.group(3) == 'lang':
-                ret += '\&lang\={}'.format(m.group(4))
-            return ret
+    def _parse_ll_function(self, raw_data, line_number):
+        '''
+        func_name(v0,k1=v1,k2,v2...)
+        '''
+        func_name = raw_data.group(1).strip()
+        raw_args = raw_data.group(2).strip()
+        raw_args = [a.strip() for a in raw_args.split(',')]
+        parsed_args = {}
+        for arg in raw_args:
+            arg = list(map(lambda x: x.strip(), arg.split('=')))
+            if len(arg) == 1:
+                arg.insert(0, 'v')
+            elif len(arg) > 2:
+                raise ValueError('Wrong parameters in function {}, line #{}'.format(func_name, line_number))
+            parsed_args[arg[0]] = arg[1]
 
+        if func_name == 'uri':
+            return '{}:uri\?v\={}'.format(LL_PREFIX, parsed_args['v'])
+        elif func_name == 'blank':
+            return '{}:blank\?v\={}'.format(LL_PREFIX, parsed_args['v'])
+        elif func_name == 'literal':
+            ret = '{}:literal\?v\={}'.format(LL_PREFIX, parsed_args['v'])
+            if 'type' in parsed_args:
+                ret += '\&type\={}'.format(parsed_args['type'])
+            if 'lang' in parsed_args:
+                ret += '\&lang\={}'.format(parsed_args['lang'])
+            return ret
+        else:
+            raise ValueError('Wrong function {}, line #{}'.format(func_name, line_number))
+
+    def _pre_process(self, raw_model):
+        parse_model = []
         # print(raw_model)
-        raw_model = re_uri.sub(r'{}:uri\?v\=\1'.format(LL_PREFIX), raw_model)
-        raw_model = re_blank.sub(r'{}:blank\?v\=\1'.format(LL_PREFIX), raw_model)
-        raw_model = re_literal.sub(lambda m: process_literal(m), raw_model)
-        # print(raw_model)
-        return raw_model
+
+        line_number = 0
+        for line in raw_model.split('\n'):
+            line_number += 1
+            line = line.strip()
+            line = re_ll_function.sub(lambda m: self._parse_ll_function(m, line_number), line)
+            parse_model.append(line)
+
+        return '\n'.join(parse_model)
 
     @staticmethod
     def _get_obj_id(obj):
@@ -256,7 +277,7 @@ class Model(object):
                             for oo in o_objs:
                                 data_graph.add((ss, pp, oo))
 
-        print(data_graph.serialize(format='nt').decode('utf-8'))
+        print(data_graph.serialize(format='ttl').decode('utf-8'))
 
 
 
